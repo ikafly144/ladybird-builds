@@ -144,7 +144,7 @@ jobs:
           version: '6.9.0'
           host: 'linux'
           target: 'desktop'
-          modules: 'qtpositioning qtwayland'
+          modules: 'qtpositioning'
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
