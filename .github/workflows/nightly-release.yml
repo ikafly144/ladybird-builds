@@ -81,7 +81,7 @@ jobs:
           sh ./scripts/check-upstream.sh
 
   # =========================================================================
-  # 2. Linux Build Job: Compiles Ladybird and packages AppImage & tar.gz concurrently
+  # 2. Linux Build Job: Compiles Ladybird with Qt 6.9+ and packages concurrently
   # =========================================================================
   build-linux:
     name: Build Linux (x86_64)
@@ -130,9 +130,17 @@ jobs:
             autoconf autoconf-archive automake build-essential ccache cmake curl \
             fonts-liberation2 git glslang-tools libdrm-dev libgl1-mesa-dev libncurses-dev \
             libpulse-dev libtool nasm ninja-build pkg-config python3-venv python3-pip \
-            qt6-base-private-dev qt6-positioning-dev qt6-tools-dev-tools qt6-wayland \
             tar unzip zip libfuse2 libfuse3-dev patchelf libxcb-cursor0 \
-            libedit-dev gcc-14 g++-14 libssl-dev
+            libedit-dev gcc-14 g++-14 libssl-dev libx11-xcb-dev libglu1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev
+
+      - name: Install Qt 6.9
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.0'
+          host: 'linux'
+          target: 'desktop'
+          modules: 'qtpositioning qtwayland'
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -152,11 +160,12 @@ jobs:
         working-directory: ladybird
         run: |
           python3 Meta/ladybird.py build --preset Release --cc gcc-14 --cxx g++-14 || {
-            echo "Direct preset build failed, attempting manual cmake invocation with vcpkg..."
+            echo "Direct preset build fallback with explicit Qt6 CMAKE_PREFIX_PATH..."
             cmake -B Build/Release -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_C_COMPILER=gcc-14 \
               -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR:-/opt/Qt/6.9.0/gcc_64}" \
               -DCMAKE_TOOLCHAIN_FILE=Build/vcpkg/scripts/buildsystems/vcpkg.cmake \
               -DENABLE_CI_BASELINE_CPU=ON \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -248,11 +257,11 @@ jobs:
             vcpkg-windows-${{ runner.os }}-
 
       - name: Install Windows Tools & Dependencies
-        shell: bash
+        shell: pwsh
         run: |
           choco install -y pkgconfiglite ninja nsis nasm ccache llvm
-          echo "C:\Program Files\NSIS" >> $GITHUB_PATH
-          echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
+          "C:\Program Files\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -266,19 +275,16 @@ jobs:
           cache: 'pip'
 
       - name: Install Python Dependencies
-        shell: bash
+        shell: pwsh
         run: |
           pip install pyyaml requests six cryptography
 
       - name: Build Ladybird for Windows
         id: build_step
-        shell: bash
+        shell: pwsh
         working-directory: ladybird
         run: |
-          python Meta/ladybird.py build --preset Release || {
-            echo "::warning::Windows CMake build failed (Upstream Windows support is experimental)."
-            exit 1
-          }
+          python Meta/ladybird.py build --preset Release
 
       - name: Package Portable ZIP
         if: steps.build_step.outcome == 'success'
@@ -400,6 +406,7 @@ jobs:
           fi
 
       - name: Build Android Gradle Project
+        id: android_build
         shell: sh
         working-directory: ladybird
         run: |
@@ -407,12 +414,16 @@ jobs:
             if [ -f "${candidate}/gradlew" ]; then
               cd "${candidate}"
               chmod +x gradlew
-              ./gradlew assembleDebug --no-daemon
+              ./gradlew assembleDebug --no-daemon || {
+                echo "::warning::Android Gradle build failed (Upstream Android support is experimental)."
+                exit 1
+              }
               break
             fi
           done
 
       - name: Package & Sign Android arm64-v8a APK
+        if: steps.android_build.outcome == 'success'
         id: pkg_android_arm64
         background: true
         shell: sh
@@ -429,6 +440,7 @@ jobs:
           sh ./builder/packaging/android/package-abi.sh
 
       - name: Package & Sign Android x86_64 APK
+        if: steps.android_build.outcome == 'success'
         id: pkg_android_x86_64
         background: true
         shell: sh
@@ -448,6 +460,7 @@ jobs:
         wait: [pkg_android_arm64, pkg_android_x86_64]
 
       - name: Upload Android Artifacts
+        if: steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: ladybird-android-apks
@@ -461,7 +474,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [metadata, build-linux, build-windows, build-android]
-    if: always() && needs.metadata.result == 'success' && (needs.build-linux.result == 'success' || needs.build-android.result == 'success')
+    if: always() && needs.metadata.result == 'success' && (needs.build-linux.result == 'success' || needs.build-android.result == 'success' || needs.build-windows.result == 'success')
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Builder Repository
@@ -482,16 +495,22 @@ jobs:
           RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
           RELEASE_DATE: ${{ needs.metadata.outputs.release_date }}
         run: |
-          mkdir -p release-assets
-          find downloaded-artifacts -type f -exec cp {} release-assets/ \;
+          mkdir -p downloaded-artifacts release-assets
+          find downloaded-artifacts -type f -exec cp {} release-assets/ \; 2>/dev/null || true
           
           cd release-assets
-          sha256sum * > SHA256SUMS.txt || true
+          if [ -n "$(ls -A . 2>/dev/null)" ]; then
+            sha256sum * > SHA256SUMS.txt 2>/dev/null || true
+            echo "has_assets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_assets=false" >> "$GITHUB_OUTPUT"
+          fi
           cd ..
 
           sh ./scripts/generate-changelog.sh > RELEASE_NOTES.md
 
       - name: Create Dated GitHub Release
+        if: steps.bundle.outputs.has_assets == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
@@ -504,6 +523,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Rolling 'nightly' Tag & Release
+        if: steps.bundle.outputs.has_assets == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
