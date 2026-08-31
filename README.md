@@ -1,8 +1,8 @@
 # 🐞 Ladybird Browser Automated Builds (GitHub Actions)
 
-[![Nightly Release](https://github.com/your-username/ladybird-builds/actions/workflows/nightly-release.yml/badge.svg)](https://github.com/your-username/ladybird-builds/actions/workflows/nightly-release.yml)
+[![Nightly Release](https://github.com/ikafly144/ladybird-builds/actions/workflows/nightly-release.yml/badge.svg)](https://github.com/ikafly144/ladybird-builds/actions/workflows/nightly-release.yml)
 [![License: BSD 2-Clause](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/your-username/ladybird-builds?color=brightgreen&label=latest%20build)](https://github.com/your-username/ladybird-builds/releases)
+[![Latest Release](https://img.shields.io/github/v/release/ikafly144/ladybird-builds?color=brightgreen&label=latest%20build)](https://github.com/ikafly144/ladybird-builds/releases)
 
 Automated GitHub Actions CI/CD repository for building and releasing [Ladybird Browser](https://github.com/LadybirdBrowser/ladybird) on **Linux**, **Windows**, and **Android**.
 
@@ -47,9 +47,9 @@ flowchart TD
 ### 1. Fork or Clone this Repository
 Push this repository to your GitHub account:
 ```sh
-git clone https://github.com/your-username/ladybird-builds.git
+git clone https://github.com/ikafly144/ladybird-builds.git
 cd ladybird-builds
-git remote set-url origin https://github.com/<your-username>/ladybird-builds.git
+git remote set-url origin https://github.com/ikafly144/ladybird-builds.git
 git push -u origin main
 ```
 
