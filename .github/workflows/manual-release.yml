@@ -1,0 +1,418 @@
+name: Ladybird Custom / Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: 'Upstream Ladybird Repository (e.g. LadybirdBrowser/ladybird or a fork)'
+        required: true
+        default: 'LadybirdBrowser/ladybird'
+        type: string
+      upstream_ref:
+        description: 'Git branch, tag, or commit SHA to build'
+        required: true
+        default: 'master'
+        type: string
+      custom_tag:
+        description: 'Custom Release Tag (leave empty for auto-generated tag)'
+        required: false
+        default: ''
+        type: string
+      build_linux:
+        description: 'Build Linux (AppImage & Tarball)'
+        required: true
+        default: true
+        type: boolean
+      build_windows:
+        description: 'Build Windows (NSIS & ZIP) [Experimental]'
+        required: true
+        default: true
+        type: boolean
+      build_android:
+        description: 'Build Android (APK)'
+        required: true
+        default: true
+        type: boolean
+      is_prerelease:
+        description: 'Mark release as pre-release'
+        required: true
+        default: false
+        type: boolean
+      is_draft:
+        description: 'Create release as a draft'
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.upstream_ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  metadata:
+    name: Prepare Metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      upstream_repo: ${{ steps.meta.outputs.upstream_repo }}
+      upstream_ref: ${{ steps.meta.outputs.upstream_ref }}
+      upstream_sha: ${{ steps.meta.outputs.upstream_sha }}
+      upstream_short_sha: ${{ steps.meta.outputs.upstream_short_sha }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_date: ${{ steps.meta.outputs.release_date }}
+      build_linux: ${{ steps.meta.outputs.build_linux }}
+      build_windows: ${{ steps.meta.outputs.build_windows }}
+      build_android: ${{ steps.meta.outputs.build_android }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      is_draft: ${{ steps.meta.outputs.is_draft }}
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Upstream Commit & Generate Metadata
+        id: meta
+        shell: sh
+        env:
+          INPUT_REPO: ${{ inputs.upstream_repo }}
+          INPUT_REF: ${{ inputs.upstream_ref }}
+          INPUT_TAG: ${{ inputs.custom_tag }}
+          INPUT_LINUX: ${{ inputs.build_linux }}
+          INPUT_WINDOWS: ${{ inputs.build_windows }}
+          INPUT_ANDROID: ${{ inputs.build_android }}
+          INPUT_PRERELEASE: ${{ inputs.is_prerelease }}
+          INPUT_DRAFT: ${{ inputs.is_draft }}
+        run: |
+          sh ./scripts/check-upstream.sh
+
+  build-linux:
+    name: Build Linux (x86_64)
+    needs: [metadata]
+    if: ${{ needs.metadata.outputs.build_linux == 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout Ladybird Upstream
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.metadata.outputs.upstream_repo }}
+          ref: ${{ needs.metadata.outputs.upstream_sha }}
+          path: ladybird
+          submodules: recursive
+
+      - name: Setup Ccache Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-linux-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-linux-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}
+            ccache-linux-${{ runner.os }}-
+
+      - name: Setup vcpkg Binary Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg
+          key: vcpkg-linux-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/Meta/vcpkg/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-linux-${{ runner.os }}-
+
+      - name: Install Build Dependencies
+        shell: sh
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            autoconf autoconf-archive automake build-essential ccache cmake curl \
+            fonts-liberation2 git glslang-tools libdrm-dev libgl1-mesa-dev libncurses-dev \
+            libpulse-dev libtool nasm ninja-build pkg-config python3-venv python3-pip \
+            qt6-base-private-dev qt6-positioning-dev qt6-tools-dev-tools qt6-wayland \
+            tar unzip zip libfuse2 libfuse3-dev patchelf libxcb-cursor0
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python Dependencies
+        shell: sh
+        run: |
+          python3 -m pip install --break-system-packages pyyaml requests six cryptography
+
+      - name: Initialize Ccache
+        shell: sh
+        run: |
+          sh ./builder/scripts/setup-ccache.sh
+
+      - name: Build Ladybird
+        shell: sh
+        working-directory: ladybird
+        run: |
+          cmake -B Build/Release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_CI_BASELINE_CPU=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DENABLE_ALL_THE_DEBUG_MACROS=OFF
+          ninja -C Build/Release Ladybird
+
+      - name: Package Linux (AppImage & Tarball)
+        shell: sh
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: |
+          sh ./builder/packaging/linux/package-linux.sh
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ladybird-linux-x86_64
+          path: artifacts/linux/*
+          if-no-files-found: error
+          retention-days: 5
+
+  build-windows:
+    name: Build Windows (x86_64) [Experimental]
+    needs: [metadata]
+    if: ${{ needs.metadata.outputs.build_windows == 'true' }}
+    runs-on: windows-latest
+    continue-on-error: true
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout Ladybird Upstream
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.metadata.outputs.upstream_repo }}
+          ref: ${{ needs.metadata.outputs.upstream_sha }}
+          path: ladybird
+          submodules: recursive
+
+      - name: Setup Ccache Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-windows-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-windows-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}
+            ccache-windows-${{ runner.os }}-
+
+      - name: Setup vcpkg Binary Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: vcpkg-windows-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/Meta/vcpkg/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-windows-${{ runner.os }}-
+
+      - name: Install Windows Tools & Dependencies
+        shell: bash
+        run: |
+          choco install -y ninja nsis nasm ccache llvm
+          echo "C:\Program Files\NSIS" >> $GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        shell: bash
+        run: |
+          pip install pyyaml requests six cryptography
+
+      - name: Build Ladybird for Windows
+        id: build_step
+        shell: bash
+        working-directory: ladybird
+        run: |
+          mkdir -p Build/Release
+          cmake -B Build/Release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang-cl \
+            -DCMAKE_CXX_COMPILER=clang-cl \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache || {
+              echo "::warning::Windows CMake configuration failed."
+              exit 1
+            }
+          ninja -C Build/Release Ladybird || {
+            echo "::warning::Windows Compilation failed."
+            exit 1
+          }
+
+      - name: Package Windows (NSIS Installer & ZIP)
+        if: steps.build_step.outcome == 'success'
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: |
+          bash ./builder/packaging/windows/package-windows.sh
+
+      - name: Upload Windows Artifacts
+        if: steps.build_step.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ladybird-windows-x86_64
+          path: artifacts/windows/*
+          if-no-files-found: warn
+          retention-days: 5
+
+  build-android:
+    name: Build Android (arm64-v8a & x86_64)
+    needs: [metadata]
+    if: ${{ needs.metadata.outputs.build_android == 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      ANDROID_NDK_VERSION: '26.1.10909125'
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout Ladybird Upstream
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.metadata.outputs.upstream_repo }}
+          ref: ${{ needs.metadata.outputs.upstream_sha }}
+          path: ladybird
+          submodules: recursive
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK & CMake
+        shell: sh
+        run: |
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "cmake;3.22.1" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install Rust Toolchain for Android Targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Setup Ccache Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-android-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-android-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}
+            ccache-android-${{ runner.os }}-
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Build Tools
+        shell: sh
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            autoconf autoconf-archive automake build-essential ccache cmake curl \
+            git nasm ninja-build pkg-config python3-venv python3-pip tar unzip zip
+
+      - name: Install Python Dependencies
+        shell: sh
+        run: |
+          python3 -m pip install --break-system-packages pyyaml requests six cryptography
+
+      - name: Build Android APKs
+        shell: sh
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          sh ./builder/packaging/android/package-android.sh
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ladybird-android-apks
+          path: artifacts/android/*
+          if-no-files-found: error
+          retention-days: 5
+
+  release:
+    name: Publish GitHub Release
+    needs: [metadata, build-linux, build-windows, build-android]
+    if: always() && needs.metadata.result == 'success' && (needs.build-linux.result == 'success' || needs.build-android.result == 'success')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+
+      - name: Prepare Release Bundle & SHA256 Checksums
+        id: bundle
+        shell: sh
+        env:
+          UPSTREAM_REPO: ${{ needs.metadata.outputs.upstream_repo }}
+          UPSTREAM_SHA: ${{ needs.metadata.outputs.upstream_sha }}
+          UPSTREAM_SHORT_SHA: ${{ needs.metadata.outputs.upstream_short_sha }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
+          RELEASE_DATE: ${{ needs.metadata.outputs.release_date }}
+        run: |
+          mkdir -p release-assets
+          find downloaded-artifacts -type f -exec cp {} release-assets/ \;
+          
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt || true
+          cd ..
+
+          sh ./scripts/generate-changelog.sh > RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.release_tag }}
+          name: "Ladybird Release ${{ needs.metadata.outputs.release_tag }} (${{ needs.metadata.outputs.upstream_short_sha }})"
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ needs.metadata.outputs.is_prerelease == 'true' }}
+          draft: ${{ needs.metadata.outputs.is_draft == 'true' }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

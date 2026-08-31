@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+# Determine AppDir root
+HERE="$(dirname "$(readlink -f "$0")")"
+
+export PATH="${HERE}/usr/bin:${PATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
+export QT_PLUGIN_PATH="${HERE}/usr/plugins:${QT_PLUGIN_PATH:-}"
+export QML2_IMPORT_PATH="${HERE}/usr/qml:${QML2_IMPORT_PATH:-}"
+export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export LADYBIRD_RES_DIR="${HERE}/usr/share/Ladybird/res"
+
+# Execute Ladybird with forwarded arguments
+if [ -x "${HERE}/usr/bin/Ladybird" ]; then
+    exec "${HERE}/usr/bin/Ladybird" "$@"
+elif [ -x "${HERE}/usr/bin/ladybird" ]; then
+    exec "${HERE}/usr/bin/ladybird" "$@"
+else
+    echo "Error: Ladybird binary not found in ${HERE}/usr/bin" >&2
+    exit 1
+fi

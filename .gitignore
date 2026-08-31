@@ -1,0 +1,26 @@
+# Build outputs
+Build/
+build/
+bin/
+lib/
+artifacts/
+downloaded-artifacts/
+release-assets/
+*.AppImage
+*.tar.gz
+*.zip
+*.exe
+*.apk
+*.keystore
+
+# Ccache & caches
+.ccache/
+.cache/
+.gradle/
+.idea/
+
+# System / Temporary files
+*.log
+*.tmp
+RELEASE_NOTES.md
+SHA256SUMS.txt

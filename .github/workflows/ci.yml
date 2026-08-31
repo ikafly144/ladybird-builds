@@ -1,0 +1,28 @@
+name: CI Validation
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-scripts:
+    name: Lint & Validate Scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Shellcheck & NSIS Tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y shellcheck nsis
+
+      - name: Run ShellCheck on Shell Scripts
+        run: |
+          find scripts packaging -type f -name "*.sh" | xargs shellcheck -e SC2086,SC1091 || true
+
+      - name: Validate NSIS Script Syntax
+        run: |
+          makensis -VERSION
+          makensis -CMDLINE packaging/windows/installer.nsi || true

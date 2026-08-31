@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ladybird
+GenericName=Web Browser
+Comment=A truly independent web browser and web engine
+Exec=ladybird %U
+Icon=ladybird
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+Terminal=false
