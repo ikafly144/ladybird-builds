@@ -135,7 +135,8 @@ jobs:
             fonts-liberation2 git glslang-tools libdrm-dev libgl1-mesa-dev libncurses-dev \
             libpulse-dev libtool nasm ninja-build pkg-config python3-venv python3-pip \
             qt6-base-private-dev qt6-positioning-dev qt6-tools-dev-tools qt6-wayland \
-            tar unzip zip libfuse2 libfuse3-dev patchelf libxcb-cursor0
+            tar unzip zip libfuse2 libfuse3-dev patchelf libxcb-cursor0 \
+            libedit-dev gcc-14 g++-14 libssl-dev
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -156,6 +157,8 @@ jobs:
         run: |
           cmake -B Build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-14 \
+            -DCMAKE_CXX_COMPILER=g++-14 \
             -DENABLE_CI_BASELINE_CPU=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -235,7 +238,7 @@ jobs:
       - name: Install Windows Tools & Dependencies
         shell: bash
         run: |
-          choco install -y ninja nsis nasm ccache llvm
+          choco install -y pkgconfiglite ninja nsis nasm ccache llvm
           echo "C:\Program Files\NSIS" >> $GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
 
