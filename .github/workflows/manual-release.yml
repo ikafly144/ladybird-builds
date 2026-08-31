@@ -165,27 +165,30 @@ jobs:
             -DENABLE_ALL_THE_DEBUG_MACROS=OFF
           ninja -C Build/Release Ladybird
 
-      - name: Package Linux Artifacts Concurrently
-        parallel:
-          - name: Package Portable Tarball
-            shell: sh
-            env:
-              SOURCE_DIR: ${{ github.workspace }}/ladybird
-              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
-              OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
-              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-            run: |
-              sh ./builder/packaging/linux/package-tarball.sh
+      - name: Package Portable Tarball
+        background: true
+        shell: sh
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: |
+          sh ./builder/packaging/linux/package-tarball.sh
 
-          - name: Package Standalone AppImage
-            shell: sh
-            env:
-              SOURCE_DIR: ${{ github.workspace }}/ladybird
-              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
-              OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
-              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-            run: |
-              sh ./builder/packaging/linux/package-appimage.sh
+      - name: Package Standalone AppImage
+        background: true
+        shell: sh
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: |
+          sh ./builder/packaging/linux/package-appimage.sh
+
+      - name: Wait for Linux Packaging Steps
+        wait-all: true
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -278,28 +281,33 @@ jobs:
             exit 1
           }
 
-      - name: Package Windows Artifacts Concurrently
+      - name: Package Portable ZIP
         if: steps.build_step.outcome == 'success'
-        parallel:
-          - name: Package Portable ZIP
-            shell: bash
-            env:
-              SOURCE_DIR: ${{ github.workspace }}/ladybird
-              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
-              OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
-              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-            run: |
-              bash ./builder/packaging/windows/package-zip.sh
+        background: true
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: |
+          bash ./builder/packaging/windows/package-zip.sh
 
-          - name: Compile NSIS Installer
-            shell: bash
-            env:
-              SOURCE_DIR: ${{ github.workspace }}/ladybird
-              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
-              OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
-              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-            run: |
-              bash ./builder/packaging/windows/package-nsis.sh
+      - name: Compile NSIS Installer
+        if: steps.build_step.outcome == 'success'
+        background: true
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+        run: |
+          bash ./builder/packaging/windows/package-nsis.sh
+
+      - name: Wait for Windows Packaging Steps
+        if: steps.build_step.outcome == 'success'
+        wait-all: true
 
       - name: Upload Windows Artifacts
         if: steps.build_step.outcome == 'success'
@@ -378,35 +386,38 @@ jobs:
         run: |
           python3 -m pip install --break-system-packages pyyaml requests six cryptography
 
-      - name: Build & Package Android APKs Concurrently
-        parallel:
-          - name: Build & Sign arm64-v8a APK
-            shell: sh
-            env:
-              SOURCE_DIR: ${{ github.workspace }}/ladybird
-              OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
-              TARGET_ABI: arm64-v8a
-              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-              KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-              KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-              KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-              KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-            run: |
-              sh ./builder/packaging/android/package-abi.sh
+      - name: Build & Sign arm64-v8a APK
+        background: true
+        shell: sh
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
+          TARGET_ABI: arm64-v8a
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          sh ./builder/packaging/android/package-abi.sh
 
-          - name: Build & Sign x86_64 APK
-            shell: sh
-            env:
-              SOURCE_DIR: ${{ github.workspace }}/ladybird
-              OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
-              TARGET_ABI: x86_64
-              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-              KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-              KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-              KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-              KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-            run: |
-              sh ./builder/packaging/android/package-abi.sh
+      - name: Build & Sign x86_64 APK
+        background: true
+        shell: sh
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/ladybird
+          OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
+          TARGET_ABI: x86_64
+          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          sh ./builder/packaging/android/package-abi.sh
+
+      - name: Wait for Android Packaging Steps
+        wait-all: true
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
