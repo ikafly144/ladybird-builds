@@ -225,6 +225,11 @@ jobs:
           path: ladybird
           submodules: recursive
 
+      - name: Initialize MSVC Developer Environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Setup Ccache Cache
         uses: actions/cache@v4
         with:
@@ -324,6 +329,7 @@ jobs:
     continue-on-error: true
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
     steps:
       - name: Checkout Builder Repository
         uses: actions/checkout@v4
@@ -383,15 +389,25 @@ jobs:
         run: |
           python3 -m pip install --break-system-packages pyyaml requests six cryptography
 
+      - name: Initialize vcpkg for Android
+        shell: sh
+        working-directory: ladybird
+        run: |
+          mkdir -p Build
+          if [ ! -d "Build/vcpkg" ]; then
+            git clone https://github.com/microsoft/vcpkg.git Build/vcpkg
+            ./Build/vcpkg/bootstrap-vcpkg.sh
+          fi
+
       - name: Build Android Gradle Project
         shell: sh
+        working-directory: ladybird
         run: |
-          cd ladybird
           for candidate in "UI/Android" "Android" "."; do
             if [ -f "${candidate}/gradlew" ]; then
               cd "${candidate}"
               chmod +x gradlew
-              ./gradlew assembleDebug --no-daemon || true
+              ./gradlew assembleDebug --no-daemon
               break
             fi
           done
