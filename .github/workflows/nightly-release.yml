@@ -81,7 +81,7 @@ jobs:
           sh ./scripts/check-upstream.sh
 
   # =========================================================================
-  # 2. Linux Build Job: Compiles Ladybird and packages AppImage & tar.gz
+  # 2. Linux Build Job: Compiles Ladybird and packages AppImage & tar.gz in parallel
   # =========================================================================
   build-linux:
     name: Build Linux (x86_64)
@@ -158,15 +158,27 @@ jobs:
             -DENABLE_ALL_THE_DEBUG_MACROS=OFF
           ninja -C Build/Release Ladybird
 
-      - name: Package Linux (AppImage & Tarball)
-        shell: sh
-        env:
-          SOURCE_DIR: ${{ github.workspace }}/ladybird
-          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
-          OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
-          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-        run: |
-          sh ./builder/packaging/linux/package-linux.sh
+      - name: Package Linux Artifacts Concurrently
+        parallel:
+          - name: Package Portable Tarball
+            shell: sh
+            env:
+              SOURCE_DIR: ${{ github.workspace }}/ladybird
+              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+              OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
+              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+            run: |
+              sh ./builder/packaging/linux/package-tarball.sh
+
+          - name: Package Standalone AppImage
+            shell: sh
+            env:
+              SOURCE_DIR: ${{ github.workspace }}/ladybird
+              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+              OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
+              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+            run: |
+              sh ./builder/packaging/linux/package-appimage.sh
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -177,14 +189,14 @@ jobs:
           retention-days: 5
 
   # =========================================================================
-  # 3. Windows Build Job: Experimental native build + NSIS & ZIP
+  # 3. Windows Build Job: Experimental native build + concurrent NSIS & ZIP
   # =========================================================================
   build-windows:
     name: Build Windows (x86_64) [Experimental]
     needs: [metadata]
     if: ${{ needs.metadata.outputs.build_windows == 'true' }}
     runs-on: windows-latest
-    continue-on-error: true # Experimental support, do not block other platform releases
+    continue-on-error: true
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
@@ -262,16 +274,28 @@ jobs:
             exit 1
           }
 
-      - name: Package Windows (NSIS Installer & ZIP)
+      - name: Package Windows Artifacts Concurrently
         if: steps.build_step.outcome == 'success'
-        shell: bash
-        env:
-          SOURCE_DIR: ${{ github.workspace }}/ladybird
-          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
-          OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
-          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-        run: |
-          bash ./builder/packaging/windows/package-windows.sh
+        parallel:
+          - name: Package Portable ZIP
+            shell: bash
+            env:
+              SOURCE_DIR: ${{ github.workspace }}/ladybird
+              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+              OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
+              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+            run: |
+              bash ./builder/packaging/windows/package-zip.sh
+
+          - name: Compile NSIS Installer
+            shell: bash
+            env:
+              SOURCE_DIR: ${{ github.workspace }}/ladybird
+              BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+              OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
+              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+            run: |
+              bash ./builder/packaging/windows/package-nsis.sh
 
       - name: Upload Windows Artifacts
         if: steps.build_step.outcome == 'success'
@@ -283,7 +307,7 @@ jobs:
           retention-days: 5
 
   # =========================================================================
-  # 4. Android Build Job: Compiles Android UI and packages APKs
+  # 4. Android Build Job: Compiles & packages Android APKs concurrently
   # =========================================================================
   build-android:
     name: Build Android (arm64-v8a & x86_64)
@@ -353,18 +377,35 @@ jobs:
         run: |
           python3 -m pip install --break-system-packages pyyaml requests six cryptography
 
-      - name: Build Android APKs
-        shell: sh
-        env:
-          SOURCE_DIR: ${{ github.workspace }}/ladybird
-          OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
-          VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          sh ./builder/packaging/android/package-android.sh
+      - name: Build & Package Android APKs Concurrently
+        parallel:
+          - name: Build & Sign arm64-v8a APK
+            shell: sh
+            env:
+              SOURCE_DIR: ${{ github.workspace }}/ladybird
+              OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
+              TARGET_ABI: arm64-v8a
+              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+              KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+              KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+              KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+              KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+            run: |
+              sh ./builder/packaging/android/package-abi.sh
+
+          - name: Build & Sign x86_64 APK
+            shell: sh
+            env:
+              SOURCE_DIR: ${{ github.workspace }}/ladybird
+              OUTPUT_DIR: ${{ github.workspace }}/artifacts/android
+              TARGET_ABI: x86_64
+              VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
+              KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+              KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+              KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+              KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+            run: |
+              sh ./builder/packaging/android/package-abi.sh
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
@@ -404,12 +445,10 @@ jobs:
           mkdir -p release-assets
           find downloaded-artifacts -type f -exec cp {} release-assets/ \;
           
-          # Generate SHA256SUMS file
           cd release-assets
           sha256sum * > SHA256SUMS.txt || true
           cd ..
 
-          # Generate Changelog and Release Notes
           sh ./scripts/generate-changelog.sh > RELEASE_NOTES.md
 
       - name: Create Dated GitHub Release

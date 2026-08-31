@@ -29,10 +29,10 @@ Every nightly or manual build produces the following binary assets with automate
 flowchart TD
     Trigger["Trigger (Schedule @ 00:00 UTC or workflow_dispatch)"] --> Meta["Metadata Step\n(Fetch upstream commit SHA & generate tags)"]
     
-    subgraph BuildJobs ["Matrix Build Execution"]
-        Meta --> Linux["Linux Build\n(Ubuntu 24.04 + Qt6 + Clang/GCC)\nOutputs: .AppImage & .tar.gz"]
-        Meta --> Windows["Windows Build\n(windows-latest + Clang-cl + NSIS)\nOutputs: .exe & .zip (Experimental)"]
-        Meta --> Android["Android Build\n(Android NDK + Java 17 + Gradle)\nOutputs: .apk (arm64 / x86_64)"]
+    subgraph BuildJobs ["Matrix Jobs with Parallel Steps (Actions Parallel Steps)"]
+        Meta --> Linux["Linux Runner (Ubuntu 24.04)\n- Compile Ladybird (ccache + ninja)\n- [parallel] Package .AppImage\n- [parallel] Package .tar.gz"]
+        Meta --> Windows["Windows Runner (windows-latest)\n- Compile Ladybird (clang-cl)\n- [parallel] Package .zip\n- [parallel] Compile NSIS .exe"]
+        Meta --> Android["Android Runner (Ubuntu + NDK)\n- [parallel] Build & Sign arm64-v8a APK\n- [parallel] Build & Sign x86_64 APK"]
     end
     
     Linux --> Release["Publish Release\n- Aggregate All Artifacts\n- Generate SHA256SUMS.txt\n- Create Dated Release\n- Update Rolling 'nightly' Tag"]
