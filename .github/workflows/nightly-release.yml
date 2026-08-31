@@ -309,7 +309,6 @@ jobs:
           bash ./builder/packaging/windows/package-nsis.sh
 
       - name: Wait for Windows Packaging Steps
-        if: steps.build_step.outcome == 'success'
         wait: [pkg_win_zip, pkg_win_nsis]
 
       - name: Upload Windows Artifacts
