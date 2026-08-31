@@ -162,6 +162,7 @@ jobs:
           ninja -C Build/Release Ladybird
 
       - name: Package Portable Tarball
+        id: pkg_linux_tarball
         background: true
         shell: sh
         env:
@@ -173,6 +174,7 @@ jobs:
           sh ./builder/packaging/linux/package-tarball.sh
 
       - name: Package Standalone AppImage
+        id: pkg_linux_appimage
         background: true
         shell: sh
         env:
@@ -184,7 +186,7 @@ jobs:
           sh ./builder/packaging/linux/package-appimage.sh
 
       - name: Wait for Linux Packaging Steps
-        wait-all: true
+        wait: [pkg_linux_tarball, pkg_linux_appimage]
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -282,6 +284,7 @@ jobs:
 
       - name: Package Portable ZIP
         if: steps.build_step.outcome == 'success'
+        id: pkg_win_zip
         background: true
         shell: bash
         env:
@@ -294,6 +297,7 @@ jobs:
 
       - name: Compile NSIS Installer
         if: steps.build_step.outcome == 'success'
+        id: pkg_win_nsis
         background: true
         shell: bash
         env:
@@ -306,7 +310,7 @@ jobs:
 
       - name: Wait for Windows Packaging Steps
         if: steps.build_step.outcome == 'success'
-        wait-all: true
+        wait: [pkg_win_zip, pkg_win_nsis]
 
       - name: Upload Windows Artifacts
         if: steps.build_step.outcome == 'success'
@@ -388,7 +392,8 @@ jobs:
         run: |
           python3 -m pip install --break-system-packages pyyaml requests six cryptography
 
-      - name: Build & Package Android APKs Concurrently
+      - name: Build & Package Android arm64-v8a Concurrently
+        id: pkg_android_arm64
         background: true
         shell: sh
         env:
@@ -404,6 +409,7 @@ jobs:
           sh ./builder/packaging/android/package-abi.sh
 
       - name: Build & Package Android x86_64 Concurrently
+        id: pkg_android_x86_64
         background: true
         shell: sh
         env:
@@ -419,7 +425,7 @@ jobs:
           sh ./builder/packaging/android/package-abi.sh
 
       - name: Wait for Android Packaging Steps
-        wait-all: true
+        wait: [pkg_android_arm64, pkg_android_x86_64]
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
