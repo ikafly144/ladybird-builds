@@ -73,10 +73,10 @@ jobs:
         env:
           INPUT_REPO: ${{ inputs.upstream_repo || 'LadybirdBrowser/ladybird' }}
           INPUT_REF: ${{ inputs.upstream_ref || 'master' }}
-          INPUT_LINUX: ${{ inputs.build_linux ?? true }}
-          INPUT_WINDOWS: ${{ inputs.build_windows ?? true }}
-          INPUT_ANDROID: ${{ inputs.build_android ?? true }}
-          INPUT_PRERELEASE: ${{ inputs.is_prerelease ?? true }}
+          INPUT_LINUX: ${{ inputs.build_linux != false }}
+          INPUT_WINDOWS: ${{ inputs.build_windows != false }}
+          INPUT_ANDROID: ${{ inputs.build_android != false }}
+          INPUT_PRERELEASE: ${{ inputs.is_prerelease != false }}
         run: |
           sh ./scripts/check-upstream.sh
 
