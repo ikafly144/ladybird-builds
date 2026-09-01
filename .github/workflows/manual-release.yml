@@ -183,7 +183,7 @@ jobs:
         shell: sh
         env:
           SOURCE_DIR: ${{ github.workspace }}/ladybird
-          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/release
           OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
           VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
         run: |
@@ -195,7 +195,7 @@ jobs:
         shell: sh
         env:
           SOURCE_DIR: ${{ github.workspace }}/ladybird
-          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/release
           OUTPUT_DIR: ${{ github.workspace }}/artifacts/linux
           VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
         run: |
@@ -294,7 +294,7 @@ jobs:
         shell: bash
         env:
           SOURCE_DIR: ${{ github.workspace }}/ladybird
-          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/release
           OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
           VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
         run: |
@@ -307,7 +307,7 @@ jobs:
         shell: bash
         env:
           SOURCE_DIR: ${{ github.workspace }}/ladybird
-          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/Release
+          BUILD_DIR: ${{ github.workspace }}/ladybird/Build/release
           OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows
           VERSION_TAG: ${{ needs.metadata.outputs.release_tag }}
         run: |
