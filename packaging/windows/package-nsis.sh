@@ -38,16 +38,40 @@ fi
 INSTALLER_NAME="Ladybird-Setup-x86_64.exe"
 OUTPUT_INSTALLER="${OUTPUT_DIR}/${INSTALLER_NAME}"
 
-if command -v makensis >/dev/null 2>&1; then
-    makensis \
+# Locate makensis executable across standard paths
+MAKENSIS="makensis"
+if ! command -v "${MAKENSIS}" >/dev/null 2>&1; then
+    for candidate in \
+        "/c/Program Files (x86)/NSIS/makensis.exe" \
+        "/c/Program Files/NSIS/makensis.exe" \
+        "C:/Program Files (x86)/NSIS/makensis.exe" \
+        "C:/Program Files/NSIS/makensis.exe" \
+        "C:\Program Files (x86)\NSIS\makensis.exe" \
+        "C:\Program Files\NSIS\makensis.exe"; do
+        if [ -f "${candidate}" ]; then
+            MAKENSIS="${candidate}"
+            break
+        fi
+    done
+fi
+
+if command -v "${MAKENSIS}" >/dev/null 2>&1 || [ -f "${MAKENSIS}" ]; then
+    echo "Compiling installer using ${MAKENSIS}..."
+    "${MAKENSIS}" \
+        -V3 \
         -DPRODUCT_VERSION="${VERSION_TAG}" \
         -DSOURCE_DIR="${STAGING_DIR}" \
         -DOUTPUT_FILE="${OUTPUT_INSTALLER}" \
         "${SCRIPT_DIR}/installer.nsi" || {
-            echo "Warning: NSIS compilation failed."
+            echo "Warning: NSIS compilation exited with non-zero status."
         }
+else
+    echo "Warning: makensis executable not found."
 fi
 
 if [ -f "${OUTPUT_INSTALLER}" ]; then
     echo "✔ [Parallel Step] Created: ${OUTPUT_INSTALLER}"
+else
+    echo "Error: Failed to generate ${OUTPUT_INSTALLER}" >&2
+    exit 1
 fi
