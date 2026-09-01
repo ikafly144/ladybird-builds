@@ -165,7 +165,7 @@ jobs:
         run: |
           python3 Meta/ladybird.py build --preset Release --cc gcc-14 --cxx g++-14 || {
             echo "Direct preset build fallback with explicit Qt6 CMAKE_PREFIX_PATH..."
-            cmake -B Build/Release -G Ninja \
+            cmake -B Build/release -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_C_COMPILER=gcc-14 \
               -DCMAKE_CXX_COMPILER=g++-14 \
@@ -174,7 +174,7 @@ jobs:
               -DENABLE_CI_BASELINE_CPU=ON \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-            ninja -C Build/Release Ladybird
+            ninja -C Build/release Ladybird
           }
 
       - name: Package Portable Tarball
@@ -334,6 +334,10 @@ jobs:
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/29.0.13599879
+      ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/29.0.13599879
+      VCPKG_DEFAULT_BINARY_CACHE: ~/.cache/vcpkg
     steps:
       - name: Checkout Builder Repository
         uses: actions/checkout@v4
@@ -357,11 +361,11 @@ jobs:
       - name: Setup Android SDK and NDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK Components
+      - name: Install Android SDK & NDK Components
         shell: sh
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platform-tools" "platforms;android-35" "platforms;android-34" "build-tools;35.0.0" "build-tools;34.0.0" "cmake;3.22.1" "ndk;29.0.13599879"
 
       - name: Install Rust Toolchain for Android Targets
         uses: dtolnay/rust-toolchain@stable
@@ -377,16 +381,25 @@ jobs:
             ccache-android-${{ runner.os }}-${{ needs.metadata.outputs.upstream_short_sha }}
             ccache-android-${{ runner.os }}-
 
+      - name: Setup vcpkg Binary Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg
+          key: vcpkg-android-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/Meta/vcpkg/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-android-${{ runner.os }}-
+
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Install Build Tools
+      - name: Install Host & Cross Build Tools
         shell: sh
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
             autoconf autoconf-archive automake build-essential ccache cmake curl \
-            git nasm ninja-build pkg-config python3-venv python3-pip tar unzip zip
+            git nasm ninja-build pkg-config python3-venv python3-pip tar unzip zip \
+            gperf bison flex gettext meson libtool m4
 
       - name: Install Python Dependencies
         shell: sh
@@ -397,10 +410,10 @@ jobs:
         shell: sh
         working-directory: ladybird
         run: |
-          mkdir -p Build
+          mkdir -p Build ~/.cache/vcpkg
           if [ ! -d "Build/vcpkg" ]; then
             git clone https://github.com/microsoft/vcpkg.git Build/vcpkg
-            ./Build/vcpkg/bootstrap-vcpkg.sh
+            ./Build/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           fi
 
       - name: Build Android Gradle Project
@@ -412,10 +425,14 @@ jobs:
             if [ -f "${candidate}/gradlew" ]; then
               cd "${candidate}"
               chmod +x gradlew
-              ./gradlew assembleDebug --no-daemon || {
-                echo "::warning::Android Gradle build failed (Upstream Android support is experimental)."
-                exit 1
-              }
+              ./gradlew assembleDebug \
+                --no-daemon \
+                --stacktrace \
+                -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" \
+                -Dorg.gradle.parallel=true || {
+                  echo "::warning::Android Gradle build failed (Upstream Android support is experimental)."
+                  exit 1
+                }
               break
             fi
           done
